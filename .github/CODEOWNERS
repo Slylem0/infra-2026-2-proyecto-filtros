@@ -1,8 +1,21 @@
 # Quién revisa qué. Cada PR pide revisión automáticamente a los dueños de las
-# carpetas que toca. Agregar aquí a los demás integrantes cuando acepten la
-# invitación al repositorio (motor/ → persona B, trabajador/ despachador/
-# deploy/local/ → persona C).
+# carpetas que toca. Kevin y Mafe comparten el motor (Sobel es de Kevin), así
+# que se revisan entre ellos.
 
-*                   @Slylem0
-/deploy/nube/       @Slylem0
-/.github/           @Slylem0
+*                         @Slylem0
+
+/motor/                   @maferBML @Kesrigo01
+/mediciones/motor.csv     @maferBML
+
+/trabajador/              @Kesrigo01
+/despachador/             @Kesrigo01
+/deploy/local/            @Kesrigo01
+/sonar-project.properties @Kesrigo01
+/mediciones/servicio.csv  @Kesrigo01 @Slylem0
+
+/deploy/nube/             @Slylem0
+/.github/                 @Slylem0
+
+/docs/02-motor.md         @maferBML
+/docs/01-arquitectura.md  @Kesrigo01
+/docs/03-despliegue.md    @Slylem0 @Kesrigo01
