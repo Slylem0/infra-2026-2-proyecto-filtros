@@ -1,0 +1,8 @@
+# Quién revisa qué. Cada PR pide revisión automáticamente a los dueños de las
+# carpetas que toca. Agregar aquí a los demás integrantes cuando acepten la
+# invitación al repositorio (motor/ → persona B, trabajador/ despachador/
+# deploy/local/ → persona C).
+
+*                   @Slylem0
+/deploy/nube/       @Slylem0
+/.github/           @Slylem0

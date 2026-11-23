@@ -1,0 +1,27 @@
+name: 🐛 Bug
+description: Algo que no funciona (salida distinta, CI rojo, pod que no arranca…)
+labels: ["bug"]
+projects: ["Slylem0/9"]
+body:
+  - type: textarea
+    id: que
+    attributes:
+      label: ¿Qué pasa?
+    validations: { required: true }
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Cómo reproducirlo
+      description: Órdenes exactas, número de hilos, imagen usada.
+      render: console
+    validations: { required: true }
+  - type: textarea
+    id: esperado
+    attributes:
+      label: ¿Qué se esperaba?
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / salida
+      render: text
