@@ -1,0 +1,37 @@
+name: 🛠️ Tarea
+description: Algo que hay que construir (motor, servicio, nube, CI/CD o informe)
+labels: []
+projects: ["Slylem0/9"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options: ["☁️ Nube", "⚙️ Motor", "🐳 Servicio", "🔁 CI/CD", "📝 Docs"]
+    validations: { required: true }
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      description: ¿Por qué hace falta? Cita la sección del enunciado o el criterio de la rúbrica.
+    validations: { required: true }
+  - type: textarea
+    id: tareas
+    attributes:
+      label: Tareas
+      value: |
+        - [ ] 
+    validations: { required: true }
+  - type: textarea
+    id: aceptacion
+    attributes:
+      label: Criterios de aceptación
+      description: ¿Cómo sabemos que quedó terminado? Debe poder verificarse.
+      value: |
+        - [ ] 
+    validations: { required: true }
+  - type: input
+    id: depende
+    attributes:
+      label: Depende de
+      placeholder: "#12, #19"
