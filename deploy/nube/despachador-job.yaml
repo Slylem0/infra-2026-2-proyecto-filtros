@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: despachador
+  namespace: filtros
+  labels:
+    app.kubernetes.io/name: despachador
+    app.kubernetes.io/component: despachador
+spec:
+  # Dos reintentos: cubren que el Job arranque antes de que los trabajadores
+  # estén listos, sin repetir indefinidamente un lote roto.
+  backoffLimit: 2
+  # Tope de tiempo para no dejar un Job colgado gastando crédito.
+  activeDeadlineSeconds: 1800
+  # Se borra una hora después de terminar: da tiempo de leer los logs con el
+  # throughput y permite volver a aplicar el Job (su plantilla es inmutable).
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: despachador
+        app.kubernetes.io/component: despachador
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        # El volumen queda escribible por el UID del contenedor.
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: despachador
+          image: despachador:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: filtros-config
+          env:
+            - name: URL_TRABAJADOR
+              value: "http://trabajador:8000"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: datos
+              mountPath: /datos
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: datos
+          persistentVolumeClaim:
+            claimName: datos
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

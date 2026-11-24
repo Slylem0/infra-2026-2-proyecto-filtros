@@ -1,0 +1,15 @@
+# Configuración compartida por el trabajador y el despachador.
+# OMP_NUM_THREADS tiene que coincidir con la CPU que pide el trabajador
+# (ver README.md, "requests y limits").
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filtros-config
+  namespace: filtros
+  labels:
+    app.kubernetes.io/name: filtros
+    app.kubernetes.io/component: config
+data:
+  OMP_NUM_THREADS: "2"
+  FILTROS: "gris,gaussiano,sobel,otsu"
+  CONCURRENCIA: "8"

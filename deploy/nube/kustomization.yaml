@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: filtros
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: filtros
+      app.kubernetes.io/managed-by: kustomize
+    # No se tocan los selectores: son inmutables en Deployments y Jobs.
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - datos-pvc.yaml
+  - trabajador-deployment.yaml
+  - trabajador-service.yaml
+  - despachador-job.yaml
+
+# Los manifiestos usan nombres neutros; aquí se apuntan al registro real.
+# El CI los sobrescribe con la etiqueta inmutable del commit, p. ej.:
+#   kustomize edit set image trabajador=<REGISTRO>/trabajador:<SHA>
+# Nunca "latest".
+images:
+  - name: trabajador
+    newName: trabajador
+    newTag: dev
+  - name: despachador
+    newName: despachador
+    newTag: dev

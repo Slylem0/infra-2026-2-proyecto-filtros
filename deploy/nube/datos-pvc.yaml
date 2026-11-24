@@ -1,0 +1,18 @@
+# Lote: 64 PPM de 1024x1024 (~192 MiB) de entrada + 64 PGM (~64 MiB) de
+# salida ≈ 256 MiB. 1 GiB deja 4x de margen. Sin storageClassName: usa la
+# clase por defecto del clúster, sea cual sea la nube.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datos
+  namespace: filtros
+  labels:
+    app.kubernetes.io/name: despachador
+    app.kubernetes.io/component: almacenamiento
+spec:
+  accessModes:
+    - ReadWriteOnce
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 1Gi
