@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trabajador
+  namespace: filtros
+  labels:
+    app.kubernetes.io/name: trabajador
+    app.kubernetes.io/component: trabajador
+spec:
+  replicas: 3
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trabajador
+      app.kubernetes.io/component: trabajador
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Sin réplica extra durante el rollout: cada réplica pide 2 CPU
+      # garantizadas y un clúster dimensionado justo no tendría dónde ponerla.
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: trabajador
+        app.kubernetes.io/component: trabajador
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Reparte las réplicas entre nodos cuando se puede, para que no
+      # compitan por el mismo ancho de banda de memoria.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: trabajador
+              app.kubernetes.io/component: trabajador
+      containers:
+        - name: trabajador
+          image: trabajador:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: filtros-config
+          resources:
+            # requests == limits: QoS Guaranteed. 2 CPU = OMP_NUM_THREADS.
+            requests:
+              cpu: "2"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+            successThreshold: 1
+          volumeMounts:
+            # El motor trabaja con rutas de archivo; el sistema de archivos
+            # raíz es de solo lectura, así que los temporales van aquí.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
