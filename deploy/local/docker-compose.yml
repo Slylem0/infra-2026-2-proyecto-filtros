@@ -1,0 +1,73 @@
+# Todo el servicio con una orden, desde la raíz del repositorio o desde aquí:
+#
+#   docker compose -f deploy/local/docker-compose.yml up --build --scale trabajador=4
+#
+# Variables opcionales (ver deploy/local/README.md): FILTROS, CONCURRENCIA,
+# OMP_NUM_THREADS, TRABAJADORES (etiqueta de la fila de medición).
+name: filtros
+
+services:
+  # Deja el lote en el volumen y termina.
+  lote-init:
+    build:
+      context: ../..
+      dockerfile: deploy/local/Dockerfile.lote
+    volumes:
+      - lote:/datos
+      - ../../mediciones:/mediciones
+
+  trabajador:
+    build:
+      context: ../..
+      dockerfile: trabajador/Dockerfile
+    environment:
+      OMP_NUM_THREADS: "${OMP_NUM_THREADS:-2}"
+    # Como en el clúster: 2 CPU por réplica, igual a OMP_NUM_THREADS.
+    cpus: 2
+    mem_limit: 512m
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Sin puerto publicado: con --scale varias réplicas no pueden compartir
+    # el mismo puerto del anfitrión. El despachador entra por la red interna.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/readyz', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  despachador:
+    build:
+      context: ../..
+      dockerfile: despachador/Dockerfile
+    depends_on:
+      lote-init:
+        condition: service_completed_successfully
+      trabajador:
+        condition: service_healthy
+    environment:
+      # Una sola dirección: el DNS de Compose reparte entre las réplicas.
+      URL_TRABAJADOR: http://trabajador:8000
+      FILTROS: "${FILTROS:-gris,gaussiano,sobel,otsu}"
+      CONCURRENCIA: "${CONCURRENCIA:-8}"
+      ENTORNO: local
+      TRABAJADORES: "${TRABAJADORES:-4}"
+      RUTA_CSV: /mediciones/servicio.csv
+    volumes:
+      - lote:/datos
+      - ../../mediciones:/mediciones
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  lote:

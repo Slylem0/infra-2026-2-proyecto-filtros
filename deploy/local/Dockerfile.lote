@@ -1,0 +1,18 @@
+# Genera el lote de entrada. Contexto de construcción: la raíz del repositorio.
+FROM python:3.12-slim-bookworm AS generador
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends g++ make \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY motor/ motor/
+RUN make -C motor generar CXXFLAGS="-std=c++17 -O2 -Wall -Wextra -Werror -fopenmp"
+
+FROM python:3.12-slim-bookworm
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=generador /src/motor/generar /usr/local/bin/generar
+COPY deploy/local/generar-lote.sh /usr/local/bin/generar-lote.sh
+# Corre como root a propósito: prepara el volumen y los permisos para que el
+# despachador y el trabajador, que no son root, puedan escribir en él.
+ENTRYPOINT ["sh", "/usr/local/bin/generar-lote.sh"]
