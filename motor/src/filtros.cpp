@@ -1,5 +1,6 @@
 #include "filtros.hpp"
 
+#include <cmath>
 #include <stdexcept>
 
 Imagen gris_secuencial(const Imagen& e) {
@@ -90,8 +91,33 @@ Imagen gaussiano_paralelo(const Imagen&) {
     throw std::runtime_error("gaussiano: sin implementar");
 }
 
-Imagen sobel_secuencial(const Imagen&) {
-    throw std::runtime_error("sobel: sin implementar");
+Imagen sobel_secuencial(const Imagen& e) {
+    if (e.canales != 1) throw std::runtime_error("sobel espera una imagen de un canal");
+    Imagen s;
+    s.ancho = e.ancho;
+    s.alto = e.alto;
+    s.canales = 1;
+    s.datos.resize(static_cast<std::size_t>(e.ancho) * e.alto);
+    for (int y = 0; y < e.alto; ++y) {
+        const int arriba = recortar(y - 1, e.alto);
+        const int abajo = recortar(y + 1, e.alto);
+        for (int x = 0; x < e.ancho; ++x) {
+            const int izq = recortar(x - 1, e.ancho);
+            const int der = recortar(x + 1, e.ancho);
+            // La vecindad de 3x3 se lee una sola vez y con ella se calculan
+            // las dos máscaras:
+            //   gx = [-1 0 1; -2 0 2; -1 0 1]    gy = [-1 -2 -1; 0 0 0; 1 2 1]
+            const int a = e.en(izq, arriba, 0), b = e.en(x, arriba, 0), c = e.en(der, arriba, 0);
+            const int d = e.en(izq, y, 0), f = e.en(der, y, 0);
+            const int g = e.en(izq, abajo, 0), h = e.en(x, abajo, 0), i = e.en(der, abajo, 0);
+            const int gx = (c + 2 * f + i) - (a + 2 * d + g);
+            const int gy = (g + 2 * h + i) - (a + 2 * b + c);
+            // redondear satura en 255, que es el min(255, ...) del enunciado.
+            const double magnitud = std::sqrt(static_cast<double>(gx * gx + gy * gy));
+            s.poner(x, y, 0, redondear(magnitud));
+        }
+    }
+    return s;
 }
 
 Imagen sobel_paralelo(const Imagen&) {

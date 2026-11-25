@@ -27,6 +27,8 @@ echo "Salida esperada, calculada aparte:"
 revisar "gris sobre la imagen de prueba" ./comparar "$trabajo/gris.pgm" tests/datos/gris.pgm
 ./motor caja tests/datos/entrada.ppm "$trabajo/caja.ppm"
 revisar "caja sobre la imagen de prueba" ./comparar "$trabajo/caja.ppm" tests/datos/caja.ppm
+./motor sobel tests/datos/gris.pgm "$trabajo/sobel.pgm" --secuencial
+revisar "sobel secuencial sobre la imagen de prueba" ./comparar "$trabajo/sobel.pgm" tests/datos/sobel.pgm
 
 echo "Lectura y escritura:"
 ./motor gris tests/datos/gris.pgm "$trabajo/vuelta.pgm" 2> "$trabajo/err.txt"
