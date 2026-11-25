@@ -1,0 +1,230 @@
+# Despliegue continuo a GKE (issue #21). Ver deploy/nube/DESPLIEGUE.md.
+#
+# probar -> publicar -> desplegar. Cada push a main construye las imágenes,
+# las publica en Artifact Registry con la etiqueta del commit y las aplica al
+# clúster. Sin Dockerfiles o sin clúster encendido, los pasos de nube se saltan
+# con un aviso en vez de fallar.
+name: desplegar
+
+"on":
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      replicas:
+        description: "Réplicas del trabajador (vacío = las del manifiesto)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+# Un solo despliegue a la vez y sin cancelar el que está en curso: cortar un
+# rollout a la mitad deja el Deployment con réplicas de dos versiones.
+concurrency:
+  group: desplegar
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+  GCP_ZONE: ${{ vars.GCP_ZONE || 'us-central1-a' }}
+  GKE_CLUSTER: ${{ vars.GKE_CLUSTER || 'filtros' }}
+  AR_REPO: ${{ vars.AR_REPO || 'filtros' }}
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar con avisos como errores
+        id: compilar
+        run: make -C motor CXXFLAGS="-std=c++17 -O2 -Wall -Wextra -Werror -fopenmp"
+
+      - name: Probar con 1 hilo
+        run: OMP_NUM_THREADS=1 make -C motor pruebas
+
+      - name: Probar con 8 hilos
+        if: ${{ !cancelled() && steps.compilar.outcome == 'success' }}
+        run: OMP_NUM_THREADS=8 make -C motor pruebas
+
+  publicar:
+    needs: probar
+    runs-on: ubuntu-latest
+    outputs:
+      listo: ${{ steps.dockerfiles.outputs.listo }}
+      imagen_trabajador: ${{ steps.imagenes.outputs.trabajador }}
+      imagen_despachador: ${{ steps.imagenes.outputs.despachador }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mientras los Dockerfiles no existan, main no se rompe: el resto del
+      # job y el despliegue se saltan con un aviso.
+      - name: Comprobar los Dockerfiles
+        id: dockerfiles
+        env:
+          HASH_TRABAJADOR: ${{ hashFiles('trabajador/Dockerfile') }}
+          HASH_DESPACHADOR: ${{ hashFiles('despachador/Dockerfile') }}
+        run: |
+          faltan=""
+          [ -n "$HASH_TRABAJADOR" ] || faltan="$faltan trabajador/Dockerfile"
+          [ -n "$HASH_DESPACHADOR" ] || faltan="$faltan despachador/Dockerfile"
+          if [ -n "$faltan" ]; then
+            echo "::notice title=Despliegue saltado::Falta:${faltan}. No se construyen ni se despliegan imágenes."
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "listo=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comprobar la configuración
+        if: steps.dockerfiles.outputs.listo == 'true'
+        env:
+          WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+          GCP_SA: ${{ secrets.GCP_SA }}
+        run: |
+          error=0
+          [ -n "$GCP_PROJECT_ID" ] || { echo "::error::Falta la variable del repositorio GCP_PROJECT_ID"; error=1; }
+          [ -n "$WIF_PROVIDER" ] || { echo "::error::Falta el secreto WIF_PROVIDER (salida de wif.sh)"; error=1; }
+          [ -n "$GCP_SA" ] || { echo "::error::Falta el secreto GCP_SA (salida de wif.sh)"; error=1; }
+          exit "$error"
+
+      - name: Nombrar las imágenes
+        id: imagenes
+        if: steps.dockerfiles.outputs.listo == 'true'
+        run: |
+          base="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}"
+          echo "trabajador=${base}/trabajador:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "despachador=${base}/despachador:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Autenticarse en Google Cloud
+        if: steps.dockerfiles.outputs.listo == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA }}
+
+      - name: Instalar gcloud
+        if: steps.dockerfiles.outputs.listo == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configurar Docker para Artifact Registry
+        if: steps.dockerfiles.outputs.listo == 'true'
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      # Contexto en la raíz del repositorio: el trabajador necesita las fuentes
+      # de motor/ para compilarlo dentro de la imagen.
+      - name: Construir y publicar el trabajador
+        if: steps.dockerfiles.outputs.listo == 'true'
+        env:
+          IMAGEN: ${{ steps.imagenes.outputs.trabajador }}
+        run: |
+          docker build -f trabajador/Dockerfile -t "$IMAGEN" .
+          docker push "$IMAGEN"
+
+      - name: Construir y publicar el despachador
+        if: steps.dockerfiles.outputs.listo == 'true'
+        env:
+          IMAGEN: ${{ steps.imagenes.outputs.despachador }}
+        run: |
+          docker build -f despachador/Dockerfile -t "$IMAGEN" .
+          docker push "$IMAGEN"
+
+  desplegar:
+    needs: publicar
+    if: needs.publicar.outputs.listo == 'true'
+    runs-on: ubuntu-latest
+    env:
+      IMAGEN_TRABAJADOR: ${{ needs.publicar.outputs.imagen_trabajador }}
+      IMAGEN_DESPACHADOR: ${{ needs.publicar.outputs.imagen_despachador }}
+      REPLICAS: ${{ inputs.replicas }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autenticarse en Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SA }}
+
+      - name: Instalar gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # El clúster solo vive durante las mediciones. Si no existe, las imágenes
+      # quedan publicadas y el despliegue se salta sin fallar. Un error de
+      # permisos sí falla: list devuelve código distinto de cero.
+      - name: Comprobar si el clúster existe
+        id: cluster
+        run: |
+          nombre=$(gcloud container clusters list \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
+            --filter "name=${GKE_CLUSTER}" --format "value(name)")
+          if [ "$nombre" = "$GKE_CLUSTER" ]; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Despliegue saltado::El clúster ${GKE_CLUSTER} no existe en ${GCP_ZONE}. Imágenes publicadas: ${IMAGEN_TRABAJADOR}, ${IMAGEN_DESPACHADOR}"
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Despliegue saltado"
+              echo
+              echo "El clúster \`${GKE_CLUSTER}\` no existe en \`${GCP_ZONE}\`. Imágenes publicadas:"
+              echo
+              echo "- \`${IMAGEN_TRABAJADOR}\`"
+              echo "- \`${IMAGEN_DESPACHADOR}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Obtener credenciales del clúster
+        if: steps.cluster.outputs.existe == 'true'
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GCP_ZONE }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Fijar las imágenes del commit
+        if: steps.cluster.outputs.existe == 'true'
+        working-directory: deploy/nube
+        run: |
+          kustomize edit set image "trabajador=${IMAGEN_TRABAJADOR}" "despachador=${IMAGEN_DESPACHADOR}"
+          if [ -n "$REPLICAS" ]; then
+            case "$REPLICAS" in
+              *[!0-9]*) echo "::error::replicas debe ser un entero, no '$REPLICAS'"; exit 1 ;;
+            esac
+            kustomize edit set replicas "trabajador=${REPLICAS}"
+          fi
+          kustomize build . | grep -E '^\s+(image|replicas):'
+
+      # La plantilla de un Job es inmutable: si el despachador anterior sigue
+      # ahí, apply con una imagen nueva falla. Se borra y se vuelve a crear.
+      - name: Aplicar los manifiestos
+        if: steps.cluster.outputs.existe == 'true'
+        run: |
+          kubectl -n filtros delete job despachador --ignore-not-found --wait=true
+          kubectl apply -k deploy/nube/
+
+      - name: Esperar el rollout del trabajador
+        if: steps.cluster.outputs.existe == 'true'
+        run: kubectl -n filtros rollout status deployment/trabajador --timeout=300s
+
+      - name: Evidencia del despliegue
+        if: ${{ !cancelled() && steps.cluster.outputs.existe == 'true' }}
+        run: |
+          {
+            echo "## Despliegue en ${GKE_CLUSTER} (${GCP_ZONE})"
+            echo
+            echo "Commit \`${GITHUB_SHA}\`"
+            echo
+            echo "| Componente | Imagen desplegada |"
+            echo "|---|---|"
+            echo "| trabajador | \`${IMAGEN_TRABAJADOR}\` |"
+            echo "| despachador | \`${IMAGEN_DESPACHADOR}\` |"
+            echo
+            echo "### kubectl -n filtros get pods -o wide"
+            echo
+            echo '```'
+            kubectl -n filtros get pods -o wide 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
