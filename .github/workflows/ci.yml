@@ -1,0 +1,31 @@
+name: CI
+
+"on":
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  motor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compilar con avisos como errores
+        id: compilar
+        run: make -C motor CXXFLAGS="-std=c++17 -O2 -Wall -Wextra -Werror -fopenmp"
+
+      - name: Probar con 1 hilo
+        run: OMP_NUM_THREADS=1 make -C motor pruebas
+
+      - name: Probar con 8 hilos
+        if: ${{ !cancelled() && steps.compilar.outcome == 'success' }}
+        run: OMP_NUM_THREADS=8 make -C motor pruebas
