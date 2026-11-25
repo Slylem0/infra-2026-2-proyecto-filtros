@@ -1,0 +1,11 @@
+.git
+.github
+docs
+mediciones
+deploy
+despachador
+motor/motor
+motor/comparar
+motor/generar
+motor/arnes
+*.o
