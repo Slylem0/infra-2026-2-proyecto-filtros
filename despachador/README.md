@@ -20,9 +20,9 @@ línea del despachador.
    registro, que es lo que se lee cuando corre como Job.
 
 Si una imagen falla, termina con código 1 y **no** registra la medición: un
-tiempo de un lote incompleto no sirve. Los errores 5xx y de conexión se
-reintentan (`REINTENTOS`, 2 por defecto); un 4xx no, porque repetirlo da la
-misma respuesta.
+tiempo de un lote incompleto no sirve. Los fallos de conexión y los códigos
+502, 503 y 504 se reintentan (`REINTENTOS`, 2 por defecto). El resto no: un
+4xx, un 501 (filtro sin implementar) o un 500 darían la misma respuesta.
 
 Cada petición abre una conexión nueva. El Service de Kubernetes balancea por
 conexión, así que con una conexión larga por hilo cada hilo quedaría pegado a
@@ -41,7 +41,7 @@ una réplica durante todo el lote.
 | `ENTORNO` | `local` | Valor de la columna `entorno` (`local`, `gke`...). |
 | `TRABAJADORES` | `n/d` | Valor de la columna `trabajadores`. El despachador no puede contar las réplicas, así que quien lanza la corrida lo declara. |
 | `TIEMPO_PETICION` | `120` | Segundos máximos por petición. |
-| `REINTENTOS` | `2` | Reintentos por imagen ante 5xx o fallos de conexión. |
+| `REINTENTOS` | `2` | Reintentos por imagen ante 502, 503, 504 o fallos de conexión. |
 
 ## La tabla de mediciones
 

@@ -31,6 +31,13 @@ TRABAJADORES = os.environ.get("TRABAJADORES", "n/d")
 TIEMPO_PETICION = float(os.environ.get("TIEMPO_PETICION", "120"))
 REINTENTOS = int(os.environ.get("REINTENTOS", "2"))
 
+# Solo estos códigos pueden cambiar si se repite la petición: una réplica que
+# se reinicia o se satura (502, 503) o el motor que tardó demasiado (504). Un
+# 4xx es un problema de la imagen o de la cadena, un 501 es un filtro sin
+# implementar y un 500 es un fallo del motor con esa entrada: repetirlos daría
+# la misma respuesta.
+REINTENTABLES = {502, 503, 504}
+
 COLUMNAS = ["entorno", "trabajadores", "concurrencia", "imagenes", "segundos"]
 
 
@@ -85,9 +92,7 @@ def procesar(nombre):
                 f.write(datos)
             return nombre, None
         ultimo = "HTTP %d: %s" % (estado, datos.decode("utf-8", "replace").strip())
-        if estado < 500:
-            # Un 4xx es un problema de la imagen o de la cadena: repetirlo
-            # daría la misma respuesta.
+        if estado not in REINTENTABLES:
             break
         time.sleep(0.5 * (intento + 1))
     return nombre, ultimo
