@@ -118,6 +118,20 @@ $ bash bench/medir.sh /tmp/medicion.ppm gris caja
 escrito ../mediciones/motor.csv con 40 filas
 ```
 
+## Correr el servicio completo
+
+Con Docker y Docker Compose, sin ningún paso previo:
+
+```console
+$ cd deploy/local
+$ docker compose up --build --scale trabajador=4
+```
+
+Construye el trabajador y el despachador, genera el lote de 64 imágenes de
+1024x1024, lo procesa con cuatro trabajadores y agrega la medición a
+`mediciones/servicio.csv`. Cuando el despachador termina, `Ctrl+C` cierra los
+trabajadores. El detalle está en [`deploy/local/README.md`](deploy/local/README.md).
+
 ## Convenciones que no cambian
 
 De ellas depende que la comparación byte a byte signifique algo.
